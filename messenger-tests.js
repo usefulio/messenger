@@ -176,3 +176,37 @@ Tinytest.add('Messenger - assigns replyTo for emails sent via mailer', function 
   test.equal(sent.replyTo, message.threadId + '+' + tom + '@example.com');
   test.equal(sent.to, 'dick@example.com');
 });
+
+Tinytest.add('Messenger - threading and mailer round trip', function (test) {
+  var options = _.clone(Messenger.config);
+  options.outboundDomain = 'example.com';
+  options.outboundAddress = 'notifications@example.com';
+  options.mailer = Mailer.factory(null, {
+    defaultServiceProvider: function (email) {
+      sent = email;
+    }
+    , resolveEmailAddress: Mailer.config.resolveEmailAddress
+    , resolveAddressName: Mailer.config.resolveAddressName
+  });
+  var messenger = Messenger.factory(null, options);
+
+  var sent;
+  messenger.send({
+    fromId: tom
+    , toId: dick
+  });
+
+  test.equal(sent.from, '"Tom" <notifications@example.com>');
+  test.equal(sent.to, '"Dick" <dick@example.com>');
+  test.equal(sent.replyTo, sent.threadId + '+' + tom + '@example.com');
+
+  options.mailer.send('recieve', {
+    from: sent.to
+    , to: sent.replyTo
+    , text: 'hi'
+  });
+
+  test.equal(sent.from, '"Dick" <notifications@example.com>');
+  test.equal(sent.to, '"Tom" <tom@example.com>');
+  test.equal(sent.text, 'hi');
+});

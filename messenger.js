@@ -5,24 +5,23 @@ function parseEmailAddress(addressOrArray) {
   return _.map(emails, function (email) {
     var name = /"([^"]+)"/.exec(email);
     var address = /<([^>]+)>/.exec(email);
-    if (address) {
-      name = name && name[1];
-      address = address[1];
-      var threadId = /([^+]+)\+/.exec(address);
-      var recipientId = /\+([^+]+)@/.exec(address);
-      threadId = threadId && threadId[0];
-      recipientId = recipientId && recipientId[0];
-      return {
-        email: address
-        , name: name
-        , threadId: threadId
-        , recipientId: recipientId
-      };
-    } else {
-      return {
-        email: email
-      };
-    }
+    if (address)
+      address = address[1]
+    else
+      address = email;
+
+    name = name && name[1];
+
+    var threadId = /([^+]+)\+/.exec(address);
+    var recipientId = /\+([^+]+)@/.exec(address);
+    threadId = threadId && threadId[1];
+    recipientId = recipientId && recipientId[1];
+    return {
+      email: address
+      , name: name
+      , threadId: threadId
+      , recipientId: recipientId
+    };
   });
 }
 
@@ -62,11 +61,17 @@ Messenger.factory = function (messenger, config) {
   };
 
   if (messenger.config.mailer) {
-    messenger.config.mailer.config.threading = {
+    var mailer = messenger.config.mailer;
+
+    mailer.config.threading = {
       onRecieveRoute: 'messengerSend'
       , setOutboundProperties: function (email) {
         var to = parseEmailAddress(email.to)[0];
         var from = parseEmailAddress(email.from)[0];
+
+        // remove these properties so they'll be re-evaluated by the mailer package
+        delete email.to;
+        delete email.from;
 
         if (to.threadId)
           email.threadId = to.threadId;
@@ -79,17 +84,20 @@ Messenger.factory = function (messenger, config) {
       }
     };
 
-    messenger.config.mailer.router.route('messengerSend', function (email) {
+    mailer.router.route('messengerSend', function (email) {
       messenger.send(email);
     });
 
     if (messenger.config.outboundAddress)
-      messenger.config.mailer.config.threading.from = function (from, email) {
-        return messenger.config.outboundAddress;
+      mailer.config.threading.from = function (from, email) {
+        var name;
+        if (mailer.config.resolveAddressName)
+          name = mailer.config.resolveAddressName(parseEmailAddress(from)[0].email);
+        return Mailer.helpers.getPrettyAddress(messenger.config.outboundAddress, name);
       };
 
     if (messenger.config.outboundDomain)
-      messenger.config.mailer.config.threading.replyTo = function (replyTo, email) {
+      mailer.config.threading.replyTo = function (replyTo, email) {
         return replyTo || email.threadId + "+" + email.fromId + "@" + messenger.config.outboundDomain;
       };
   }
