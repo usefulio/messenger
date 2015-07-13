@@ -104,6 +104,19 @@ Tinytest.add('Messenger - assigns a unique userId to non-existent users', functi
   test.equal(fromTomToDick.threadId, fromDickToTom.threadId);
 });
 
+Tinytest.add('Messenger - finds existing userId for existing users', function (test) {
+  var messenger = Messenger.factory(null, _.pick(Messenger.config, 'threads', 'recipients', 'users'));
+
+  var fromTomToDick = messenger.send({
+    fromId: {
+      email: 'tom@example.com'
+    }
+    , toId: dick
+  });
+
+  test.equal(fromTomToDick.fromId, tom);
+});
+
 Tinytest.add('Messenger - sends messages via mailer', function (test) {
   var sent;
   var messenger = Messenger.factory(null, {

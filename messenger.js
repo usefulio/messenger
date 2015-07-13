@@ -114,7 +114,16 @@ Messenger.factory = function (messenger, config) {
               // user should be an object with a single property which represents
               // the communication method we use to get ahold of that user
               // e.g. email, phone, ip address, anonymous token, whatever.
-              var recipient = messenger.config.recipients.findOne(user);
+              var recipient;
+
+              if (messenger.config.users && !recipient)
+                recipient = messenger.config.users.findOne({
+                  "emails.address": user.email
+                });
+
+              if (messenger.config.recipients && !recipient)
+                recipient = messenger.config.recipients.findOne(user);
+              
               if (recipient)
                 return recipient._id;
               else
