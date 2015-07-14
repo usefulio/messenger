@@ -88,17 +88,21 @@ Messenger.factory = function (messenger, config) {
       messenger.send(email);
     });
 
-    if (messenger.config.outboundAddress)
       mailer.config.threading.from = function (from, email) {
-        var name;
-        if (mailer.config.resolveAddressName)
-          name = mailer.config.resolveAddressName(parseEmailAddress(from)[0].email);
-        return Mailer.helpers.getPrettyAddress(messenger.config.outboundAddress, name);
+        if (messenger.config.outboundAddress) {
+          var name;
+          if (mailer.config.resolveAddressName)
+            name = mailer.config.resolveAddressName(parseEmailAddress(from)[0].email);
+          return Mailer.helpers.getPrettyAddress(messenger.config.outboundAddress, name);
+        } else
+          return from;
       };
 
-    if (messenger.config.outboundDomain)
       mailer.config.threading.replyTo = function (replyTo, email) {
-        return replyTo || email.threadId + "+" + email.fromId + "@" + messenger.config.outboundDomain;
+        if (messenger.config.outboundDomain)
+          return replyTo || (email.threadId + "+" + email.fromId + "@" + messenger.config.outboundDomain);
+        else
+          return replyTo;
       };
   }
 
@@ -169,11 +173,7 @@ Messenger.factory = function (messenger, config) {
   messenger.router.route('mailer', function (message) {
     var mailer = messenger.config.mailer;
     if (mailer) {
-      if (_.isFunction(mailer))
-        mailer.call(this, message);
-      else if (_.isFunction(mailer.send)) {
-        mailer.send(message, this.options);
-      }
+      mailer.send(message, this.options);
     }
   });
 
