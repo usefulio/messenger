@@ -158,8 +158,6 @@ Meteor.startup(function () {
     var name = user && user.profile && user.profile.name;
     var address = user && _.first(user.emails).address;
 
-    console.log(this.config);
-
     if (kind === 'from' && this.config.outboundAddress) {
       address = this.config.outboundAddress;
     } else if (kind === 'replyTo' && this.config.inboundDomain) {
@@ -219,6 +217,12 @@ Meteor.startup(function () {
   });
 
   Messenger.addAction('default', function (message) {
+    var thread = this.threads.findOne(message.thread);
+    if (thread && thread.identity)
+      console.log(_.extend(message, thread.identity));
+  });
+
+  Messenger.addAction('default', function (message) {
     message.sentAt = new Date();
   });
 
@@ -229,7 +233,7 @@ Meteor.startup(function () {
 
   var Mailer = Package['useful:mailer'].Mailer;
   if (Mailer && Messenger.config.mailer !== null) {
-    console.log('setting up mailer settings', Messenger.config);
+    console.log('messenger: initializing mailer');
 
     var config = _.defaults(Messenger.config.mailer || {}, {
       mailer: Mailer

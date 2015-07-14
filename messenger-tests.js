@@ -303,6 +303,18 @@ Tinytest.add('Messenger - global instance - should attach itself to the mailer i
   test.equal(lastMailedMessage.replyTo, '"Dick" <' + thread + '+' + dick + '@example.com>');
 });
 
+Tinytest.add('Messenger - global instance - should attach thread metadata to messages', function (test) {
+  var message = Messenger.send({
+    from: tom
+    , to: dick
+    , thread: {
+      name: 'name'
+    }
+  });
+
+  test.equal(message.name, 'name');
+});
+
 // Tinytest.add('Messenger - global instance - should parse text part of inbound emails', function (test) {
 //   var message = Messenger.send({
 //     from: tom
