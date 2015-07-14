@@ -34,6 +34,9 @@ function getRecipientId (address, messenger) {
   return user && user._id;
 }
 
+if (Meteor.isServer)
+  EmailReplyParser = Npm.require('emailreplyparser').EmailReplyParser;
+
 Messenger = {};
 
 Messenger.factory = function (messenger, config) {
@@ -81,6 +84,9 @@ Messenger.factory = function (messenger, config) {
           email.toId = getRecipientId(to.email, messenger);
 
         email.fromId = getRecipientId(from.email, messenger);
+
+        if (messenger.config.parseReply)
+          email.text = messenger.config.parseReply(email.text, email);
       }
     };
 
@@ -193,5 +199,8 @@ Meteor.startup(function () {
       , recipients: new Mongo.Collection('useful:messenger:recipients')
       , users: Meteor.users
       , mailer: Mailer
+      , parseReply: function (text) {
+        return EmailReplyParser.parse_reply(text);
+      }
     });
 });
