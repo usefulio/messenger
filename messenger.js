@@ -1,206 +1,288 @@
-function parseEmailAddress(addressOrArray) {
-  var emails = addressOrArray;
-  if (!_.isArray(emails))
-    emails = [emails];
-  return _.map(emails, function (email) {
+Messenger = function () {
+  this.notifications = {};
+  this.actions = {};
+};
+
+Messenger.prototype.addNotification = function (routeName, action) {
+  if (_.isString(action)) {
+    action = (function (action) {
+      return function (message) {
+        return this.send(action, message);
+      };
+    })(action);
+  }
+
+  this.notifications[routeName] = this.notifications[routeName] || [];
+  this.notifications[routeName].push(action);
+};
+
+Messenger.prototype.addAction = function (routeName, action) {
+  if (_.isString(action)) {
+    action = (function (action) {
+      return function (message) {
+        return this.send(action, message);
+      };
+    })(action);
+  }
+
+  this.actions[routeName] = this.actions[routeName] || [];
+  this.actions[routeName].push(action);
+};
+
+Messenger.prototype.send = function (routes, message) {
+  var self = this;
+
+  if (_.isString(routes))
+    routes = [routes];
+  if (_.isObject(routes) && !_.isArray(routes) && !message) {
+    message = routes;
+    routes = null;
+  }
+  if (!_.isObject(message))
+    throw new Error('invalid message, should be an object');
+  if (routes && !_.isArray(routes))
+    throw new Error('invalide routes, should be an array or a string');
+
+  routes = routes || message.routes || ['default'];
+
+  message.routes = message.routes || routes;
+
+  _.each(routes, function (route) {
+    if (!_.isString(route))
+      throw new Error('invalid route, should be a string');
+    var actions = self.actions[route] || [];
+    _.each(actions, function (action) {
+      var result = action.call(self, message);
+      if (_.isObject(result))
+        message = result;
+    });
+    var notifications = self.notifications[route] || [];
+    _.each(notifications, function (action) {
+      var result = action.call(self, message);
+      if (_.isObject(result))
+        message = result;
+    });
+  });
+
+  return message;
+};
+
+Messenger.config = {};
+
+Meteor.startup(function () {
+  if (Messenger.config.doNotInit)
+    return;
+
+  _.extend(Messenger, new Messenger());
+
+  Messenger.messages = new Mongo.Collection('useful:messenger:messages');
+  Messenger.threads = new Mongo.Collection('useful:messenger:threads');
+  Messenger.recipients = new Mongo.Collection('useful:messenger:recipients');
+
+  Messenger.parseAddress = function (email) {
     var name = /"([^"]+)"/.exec(email);
     var address = /<([^>]+)>/.exec(email);
     if (address)
-      address = address[1]
+      address = address[1];
     else
       address = email;
 
     name = name && name[1];
 
-    var threadId = /([^+]+)\+/.exec(address);
-    var recipientId = /\+([^+]+)@/.exec(address);
-    threadId = threadId && threadId[1];
-    recipientId = recipientId && recipientId[1];
+    var thread = /([^+]+)\+/.exec(address);
+    var recipient = /\+([^+]+)@/.exec(address);
+    thread = thread && thread[1];
+    recipient = recipient && recipient[1];
     return {
       email: address
       , name: name
-      , threadId: threadId
-      , recipientId: recipientId
+      , thread: thread
+      , recipient: recipient
     };
-  });
-}
-
-function getRecipientId (address, messenger) {
-  var user;
-  if (messenger.config.users)
-    user = messenger.config.users.findOne({"emails.address": address});
-  if (!user && messenger.config.recipients)
-    user = messenger.config.recipients.findOne({email: address});
-  return user && user._id;
-}
-
-if (Meteor.isServer)
-  EmailReplyParser = Npm.require('emailreplyparser').EmailReplyParser;
-
-Messenger = {};
-
-Messenger.factory = function (messenger, config) {
-  if (!messenger)
-    messenger = {};
-
-  messenger.config = config;
-  messenger.router = new Mailer.Router();
-
-  messenger.route = function (routeName, actionOrOptions, parentRoute) {
-    parentRoute = parentRoute || 'default';
-    if (_.isFunction(actionOrOptions))
-      return messenger.router.route(routeName, actionOrOptions, parentRoute);
-    else
-      return messenger.router.route(routeName, [Mailer.helper.resolvePropertyValues, actionOrOptions], parentRoute);
   };
 
-  messenger.send = function (routeName, email, options) {
-    if (!_.isString(routeName)) {
-      options = email;
-      email = routeName;
-      routeName = 'default';
-    }
-    return messenger.router.send(routeName, email || {}, options || {});
-  };
+  Messenger.getUser = function (userIdentifier) {
+    var isEmail = /[^\s@]+@[^\s@]+\.[^\s@]+/.test(userIdentifier);
 
-  if (messenger.config.mailer) {
-    var mailer = messenger.config.mailer;
+    var user;
 
-    mailer.config.threading = {
-      onRecieveRoute: 'messengerSend'
-      , setOutboundProperties: function (email) {
-        var to = parseEmailAddress(email.to)[0];
-        var from = parseEmailAddress(email.from)[0];
+    if (Meteor.users)
+     user = Meteor.users.findOne(userIdentifier);
+    if (!user)
+      user = this.recipients.findOne(userIdentifier);
 
-        // remove these properties so they'll be re-evaluated by the mailer package
-        delete email.to;
-        delete email.from;
-
-        if (to.threadId)
-          email.threadId = to.threadId;
-        if (to.recipientId)
-          email.toId = to.recipientId;
-        else
-          email.toId = getRecipientId(to.email, messenger);
-
-        email.fromId = getRecipientId(from.email, messenger);
-
-        if (messenger.config.parseReply)
-          email.text = messenger.config.parseReply(email.text, email);
+    if (isEmail) {
+      if (!user && Meteor.users)
+        user = Meteor.users.findOne({
+          "emails.address": userIdentifier
+        });
+      if (!user)
+        user = this.recipients.findOne({
+          "emails.address": userIdentifier
+        });
+      if (!user) {
+        user = {
+          _id: this.recipients.insert({
+            emails: [{address: userIdentifier}]
+          })
+        };
       }
-    };
+    }
 
-    mailer.router.route('messengerSend', function (email) {
-      // if we the to-user isn't in our system drop the email
-      if (!email.toId)
-        return false;
-      messenger.send(email);
+    return user && user._id;
+  };
+
+  Messenger.prettifyEmail = function (name, address) {
+    if (_.isString(name)) {
+      return '"' + name.replace(/[^a-z0-9!#$%&'*+\-\/=?\^_`{|}~ ]/ig, "") + '" <' + address + '>';
+    } else {
+      return address;
+    }
+  };
+
+  Messenger.getParsedReply = function (text) {
+    if (typeof EmailReplyParser !== 'undefined')
+      return EmailReplyParser.parse_reply(text.replace(">\nwrote:", "> wrote:"));
+    else
+      return text;
+  };
+
+  Messenger.getEmail = function (userId, kind, email) {
+    var user;
+
+    if (Meteor.users)
+      user = Meteor.users.findOne(userId);
+    if (!user)
+      user = this.recipients.findOne(userId);
+    
+    var name = user && user.profile && user.profile.name;
+    var address = user && _.first(user.emails).address;
+
+    console.log(this.config);
+
+    if (kind === 'from' && this.config.outboundAddress) {
+      address = this.config.outboundAddress;
+    } else if (kind === 'replyTo' && this.config.inboundDomain) {
+      address = email.thread + '+' + user._id + '@' + this.config.inboundDomain;
+    }
+
+    return this.prettifyEmail(name, address);
+  };
+
+  Messenger.addAction('default', function (message) {
+    message.from = this.getUser(message.from);
+    message.to = this.getUser(message.to);
+  });
+
+  Messenger.addAction('default', function (message) {
+    var participants = _.sortBy([message.from, message.to], _.identity);
+
+    var thread;
+
+    if (_.isString(message.thread))
+      thread = this.threads.findOne(message.thread);
+    
+    if (!thread && message.thread)
+      thread = this.threads.findOne({
+        identity: message.thread
+      });
+
+    if (!thread && message.thread) {
+      thread = {
+        _id: this.threads.insert({
+          identity: message.thread
+          , participants: participants
+        })
+      };
+    }
+
+    if (!thread) {
+      thread = this.threads.findOne({
+        participants: {
+          $all: participants
+          , $size: participants.length
+        }
+        , isAnonymous: true
+      });
+    }
+
+    if (!thread) {
+      thread = {
+        _id: this.threads.insert({
+          participants: participants
+          , isAnonymous: true
+        })
+      };
+    }
+
+    message.thread = thread._id;
+  });
+
+  Messenger.addAction('default', function (message) {
+    message.sentAt = new Date();
+  });
+
+  Messenger.addNotification('default', function (message) {
+    var id = this.messages.insert(message);
+    return this.messages.findOne(id);
+  });
+
+  var Mailer = Package['useful:mailer'].Mailer;
+  if (Mailer && Messenger.config.mailer !== null) {
+    console.log('setting up mailer settings', Messenger.config);
+
+    var config = _.defaults(Messenger.config.mailer || {}, {
+      mailer: Mailer
+      , route: 'default'
     });
 
-      mailer.config.threading.from = function (from, email) {
-        if (messenger.config.outboundAddress) {
-          var name;
-          if (mailer.config.resolveAddressName)
-            name = mailer.config.resolveAddressName(parseEmailAddress(from)[0].email);
-          return Mailer.helpers.getPrettyAddress(messenger.config.outboundAddress, name);
-        } else
-          return from;
-      };
+    Messenger.addNotification('default', function (message) {
+      console.log('outbound message to:', message.to, 'subject:',  message.subject);
+      var email = config.mailer.send(config.route, {
+        from: this.getEmail(message.from, 'from', message)
+        , to: this.getEmail(message.to)
+        , replyTo: this.getEmail(message.from, 'replyTo', message)
+        , fromId: message.from
+        , toId: message.to
+        , subject: message.subject
+        , text: message.text
+      });
 
-      mailer.config.threading.replyTo = function (replyTo, email) {
-        if (messenger.config.outboundDomain)
-          return replyTo || (email.threadId + "+" + email.fromId + "@" + messenger.config.outboundDomain);
-        else
-          return replyTo;
-      };
+      if (message._id)
+        this.messages.update(message._id, {
+          $push: {
+            notifications: {
+              email: email._id
+            }
+          }
+        });
+
+      return this.messages.findOne(message._id);
+    });
+
+    config.mailer.router.route('inbound/message', function (email) {
+      Messenger.send('inbound/email', email);
+    });
+
+    config.mailer.config.threading = config.mailer.config.threading || {};
+    config.mailer.config.threading.onRecieveRoute = 'inbound/message';
   }
 
-  messenger.router.route('assignRecipientId', function (message) {
-    if (messenger.config.recipients)
-      _.each(['fromId', 'toId'], function (propertyName) {
-        var users = _.chain([message[propertyName]])
-          .flatten()
-          .map(function (user) {
-            var recipient;
+  Messenger.addAction('inbound/email', function (email) {
+    console.log('inbound message from:' + email.from + " subject:" + email.subject);
 
-            if (_.isString(user)) {
-              return user;
-            } else if (_.isObject(user)) {
-              // user should be an object with a single property which represents
-              // the communication method we use to get ahold of that user
-              // e.g. email, phone, ip address, anonymous token, whatever.
-
-              if (messenger.config.users && !recipient)
-                recipient = messenger.config.users.findOne({
-                  "emails.address": user.email
-                });
-
-              if (messenger.config.recipients && !recipient)
-                recipient = messenger.config.recipients.findOne(user);
-            }
-              
-            if (recipient)
-              return recipient._id;
-            else
-              return messenger.config.recipients.insert(user);
-          })
-          .value();
-        if (users.length === 1)
-          message[propertyName] = users[0];
-        else
-          message[propertyName] = users;
-      });
+    var recipientDetails = this.parseAddress(email.to);
+    var senderDetails = this.parseAddress(email.from);
+    return {
+      from: this.getUser(senderDetails && senderDetails.email)
+      , to: this.getUser(recipientDetails && recipientDetails.recipient)
+      , thread: recipientDetails.thread
+      , subject: email.subject
+      , text: this.getParsedReply(email.text || '')
+      , html: email.html
+      , original: _.pick(email, 'from', 'to', 'subject', 'text', 'html')
+    };
   });
 
-  messenger.router.route('assignThreadId', function (message) {
-    if (!message.threadId && messenger.config.threads) {
-      var users = _.chain([message.fromId, message.toId])
-        .flatten()
-        .sortBy(_.identity)
-        .value();
-
-      var thread = messenger.config.threads.findOne({
-        name: {
-          $exists: false
-        }
-        , participants: {
-          $all: users
-          , $size: users.length
-        }
-      });
-
-      if (!thread)
-        thread = messenger.config.threads.insert({
-          participants: users
-        });
-      else
-        thread = thread._id;
-
-      message.threadId = thread;
-    }
-  });
-
-  messenger.router.route('mailer', function (message) {
-    var mailer = messenger.config.mailer;
-    if (mailer) {
-      mailer.send(message, this.options);
-    }
-  });
-
-  messenger.router.route('default', 'assignRecipientId', 'assignThreadId', 'mailer');
-
-  return messenger;
-};
-
-Meteor.startup(function () {
-  if (!Messenger.send)
-    Messenger.factory(Messenger, {
-      threads: new Mongo.Collection('useful:messenger:threads')
-      , recipients: new Mongo.Collection('useful:messenger:recipients')
-      , users: Meteor.users
-      , mailer: Mailer
-      , parseReply: function (text) {
-        return EmailReplyParser.parse_reply(text);
-      }
-    });
+  Messenger.addNotification('inbound/email', 'default');
 });
