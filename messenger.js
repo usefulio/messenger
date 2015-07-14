@@ -31,7 +31,7 @@ function getRecipientId (address, messenger) {
     user = messenger.config.users.findOne({"emails.address": address});
   if (!user && messenger.config.recipients)
     user = messenger.config.recipients.findOne({email: address});
-  return user && user._id || address;
+  return user && user._id;
 }
 
 Messenger = {};
@@ -85,6 +85,9 @@ Messenger.factory = function (messenger, config) {
     };
 
     mailer.router.route('messengerSend', function (email) {
+      // if we the to-user isn't in our system drop the email
+      if (!email.toId)
+        return false;
       messenger.send(email);
     });
 
@@ -112,13 +115,14 @@ Messenger.factory = function (messenger, config) {
         var users = _.chain([message[propertyName]])
           .flatten()
           .map(function (user) {
-            if (_.isString(user))
+            var recipient;
+
+            if (_.isString(user)) {
               return user;
-            else if (_.isObject(user)) {
+            } else if (_.isObject(user)) {
               // user should be an object with a single property which represents
               // the communication method we use to get ahold of that user
               // e.g. email, phone, ip address, anonymous token, whatever.
-              var recipient;
 
               if (messenger.config.users && !recipient)
                 recipient = messenger.config.users.findOne({
@@ -127,12 +131,12 @@ Messenger.factory = function (messenger, config) {
 
               if (messenger.config.recipients && !recipient)
                 recipient = messenger.config.recipients.findOne(user);
-              
-              if (recipient)
-                return recipient._id;
-              else
-                return messenger.config.recipients.insert(user);
             }
+              
+            if (recipient)
+              return recipient._id;
+            else
+              return messenger.config.recipients.insert(user);
           })
           .value();
         if (users.length === 1)
