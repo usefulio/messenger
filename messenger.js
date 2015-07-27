@@ -249,6 +249,9 @@ Meteor.startup(function () {
         , fromId: message.from
         , toId: message.to
         , subject: message.subject
+        , subjectTemplate: message.subjectTemplate
+        , template: message.template
+        , layoutTemplate: message.layoutTemplate
         , text: message.text
       });
 
