@@ -242,7 +242,7 @@ Meteor.startup(function () {
 
     Messenger.addNotification('default', function (message) {
       console.log('outbound message to:', message.to, 'subject:',  message.subject);
-      var email = config.mailer.send(config.route, {
+      var options = _.defaults({
         from: this.getEmail(message.from, 'from', message)
         , to: this.getEmail(message.to)
         , replyTo: this.getEmail(message.from, 'replyTo', message)
@@ -253,7 +253,8 @@ Meteor.startup(function () {
         , template: message.template
         , layoutTemplate: message.layoutTemplate
         , text: message.text
-      });
+      }, message);
+      var email = config.mailer.send(config.route, options);
 
       if (message._id)
         this.messages.update(message._id, {
