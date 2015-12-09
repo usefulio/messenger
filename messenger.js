@@ -256,7 +256,7 @@ Meteor.startup(function () {
       }, message);
       var email = config.mailer.send(config.route, options);
 
-      if (message._id)
+      if (message._id && email)
         this.messages.update(message._id, {
           $push: {
             notifications: {
