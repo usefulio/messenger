@@ -219,7 +219,7 @@ Meteor.startup(function () {
   Messenger.addAction('default', function (message) {
     var thread = this.threads.findOne(message.thread);
     if (thread && thread.identity)
-      console.log(_.extend(message, thread.identity));
+      _.extend(message, thread.identity);
   });
 
   Messenger.addAction('default', function (message) {
