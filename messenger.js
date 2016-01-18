@@ -156,7 +156,7 @@ Meteor.startup(function () {
       user = this.recipients.findOne(userId);
     
     var name = user && user.profile && user.profile.name;
-    var address = user && _.first(user.emails).address;
+    var address = user && _.first(user.emails) && _.first(user.emails).address;
 
     if (kind === 'from' && this.config.outboundAddress) {
       address = this.config.outboundAddress;
