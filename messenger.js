@@ -231,7 +231,7 @@ Meteor.startup(function () {
     return this.messages.findOne(id);
   });
 
-  var Mailer = Package['useful:mailer'].Mailer;
+  var Mailer = Package['useful:mailer'] && Package['useful:mailer'].Mailer;
   if (Mailer && Messenger.config.mailer !== null) {
     console.log('messenger: initializing mailer');
 
