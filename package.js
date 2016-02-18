@@ -23,6 +23,7 @@ Package.onUse(function(api) {
     weak: true
   });
   api.use('underscore');
+  api.use('ecmascript');
   api.use('mongo');
 
   api.addFiles('emailReplyParser.js');
