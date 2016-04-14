@@ -161,7 +161,7 @@ Meteor.startup(function () {
     if (kind === 'from' && this.config.outboundAddress) {
       address = this.config.outboundAddress;
     } else if (kind === 'replyTo' && this.config.inboundDomain) {
-      address = email.thread + '+' + user._id + '@' + this.config.inboundDomain;
+      address = email.thread + '+' + (user && user._id) + '@' + this.config.inboundDomain;
     }
 
     return this.prettifyEmail(name, address);
